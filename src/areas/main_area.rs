@@ -19,13 +19,23 @@ pub fn build<B>(f: &mut Frame<B>, chunk: Rect, app: &mut App) where B: Backend {
     let min_size = min(chunk.width, chunk.height) - 2;
 
     f.render_widget(main_area, chunk);
-    println!("We are in the yellow submarine!");
     let mut j = 0;
+    let (mut x, mut y) = (0, 0);
     let rows = app.items.iter().map(|item| {
+        y = 0;
         j += 1;
+        x += 1;
         let cells = item.iter().map(|c| {
             j += 1;
-            c.value().style(Style::default().bg(if j % 2 == 0 {Color::Black} else {Color::White}).fg(if *c == Player::Red {Color::Red} else {Color::Blue}))
+            y += 1;
+            let pos = app.get_current_list();
+            let current_pos = pos[app.current_index];
+            if x - 1 == current_pos.x && y - 1 == current_pos.y {
+                c.value().style(Style::default().bg(Color::Blue))
+            }else {
+                c.value().style(Style::default().bg(if j % 2 == 0 {Color::Black} else {Color::White}).fg(if *c == Player::Red {Color::Red} else {Color::Blue}))
+            }
+
         });
         Row::new(cells).height(min_size / 8)
     });

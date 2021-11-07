@@ -1,29 +1,30 @@
+use std::collections::HashMap;
 use std::io;
 use std::io::stdin;
 use tui::Terminal;
-use tui::backend::TermionBackend;
-use termion::raw::{IntoRawMode};
+use tui::backend::{CrosstermBackend};
 use tui::layout::{Layout, Constraint, Direction};
 use tui::style::{Color, Style};
 use tui::text::Text;
 use tui::widgets::{TableState, Cell};
-use termion::{
-    screen::{
-        AlternateScreen
-    },
-    event::{
-        Key
-    }
+use crossterm::{
+    event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode},
+    execute,
+    terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen}
 };
-use termion::event::Event;
-use termion::input::TermRead;
 
 mod areas {
     pub mod main_area;
     pub mod score_area;
 }
 
-#[derive(PartialEq)]
+#[derive(Copy, Clone)]
+struct Position {
+    x: i8,
+    y: i8
+}
+
+#[derive(PartialEq, Eq, Hash)]
 pub enum Player {
     Red,
     Blue,
@@ -43,25 +44,33 @@ impl Player {
 pub struct App {
     state: TableState,
     items: Vec<Vec<Player>>,
+    positions: HashMap<Player, Vec<Position>>,
+    current_player: Player,
+    current_index: usize,
 }
 
 impl App {
     fn new() -> App {
         let mut checkerboard: Vec<Vec<Player>> = vec![];
+        let mut red_positions: Vec<Position> = vec![];
+        let mut blue_positions: Vec<Position> = vec![];
 
         for x in 0..8 {
             checkerboard.push(vec![]);
 
             for y in 0..8 {
                 if (x % 2 == 0 && y % 2 == 0) || (x % 2 == 1 && y % 2 == 1) {
+                    let xi = x as i8;
                     if x <= 1 {
                         checkerboard[x].push(Player::Red);
+                        red_positions.push(Position{ x: xi, y });
                     }
                     else if x <= 5 {
                         checkerboard[x].push(Player::None);
                     }
                     else {
                         checkerboard[x].push(Player::Blue);
+                        blue_positions.push(Position{ x:xi, y});
                     }
                 }
                 else {
@@ -70,28 +79,35 @@ impl App {
             }
         }
 
+        let mut map = HashMap::new();
+        map.insert(Player::Red, red_positions);
+        map.insert(Player::Blue, blue_positions);
+
         App {
             state: TableState::default(),
             items: checkerboard,
+            positions: map,
+            current_player: Player::Red,
+            current_index: 0,
         }
     }
 
-    pub fn set_new(&mut self) {
-       self.items[3][4] = Player::Red;
+    fn get_current_list(&self) -> &Vec<Position>{
+        self.positions.get(&self.current_player).unwrap()
     }
+
 }
 
 fn main() -> Result<(), io::Error> {
     let mut app = App::new();
 
-    let stdout = io::stdout().into_raw_mode()?;
-    let stdout = AlternateScreen::from(stdout);
-    let backend = TermionBackend::new(stdout);
-
+    enable_raw_mode()?;
+    let mut stdout = io::stdout();
+    execute!(stdout, EnterAlternateScreen)?;
+    let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
-    terminal.clear()?;
 
-    terminal.show_cursor()?;
+    terminal.clear();
 
     loop {
         terminal.draw(|f| {
@@ -107,13 +123,20 @@ fn main() -> Result<(), io::Error> {
             areas::score_area::build(f, layout[1]);
         })?;
 
-       for c in stdin().keys() {
-           match c.unwrap() {
-               Key::Char('p') => {
-                   println!("Clicked p!");
-                   app.set_new();
+       if let Event::Key(key) = event::read()? {
+           match key.code {
+               KeyCode::Char('p') => {
+                    app.current_index = (app.current_index + 1) % app.get_current_list().len();
                },
-               Key::Char('q') => return Ok(()),
+               KeyCode::Char('q') => {
+                   terminal.clear();
+                   disable_raw_mode()?;
+                   return Ok(())
+               },
+               KeyCode::Enter => {
+                   if app.current_player == Player::Red {app.current_player = Player::Blue} else {app.current_player = Player::Red}
+                   app.current_index = 0;
+               }
                _ => {}
            }
        }
